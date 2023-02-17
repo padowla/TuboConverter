@@ -11,56 +11,41 @@ import subprocess
 import logging
 import re
 import shutil
-from telegram.ext import Updater
-from telegram.ext import CommandHandler
-from telegram.ext import MessageHandler, Filters
-from telegram.ext.dispatcher import run_async
-from telegram.ext import ConversationHandler
+from telegram.ext import Updater, Application, CommandHandler, MessageHandler, filters, ConversationHandler, ContextTypes
+from telegram import Bot, Update
 from telegram import MessageEntity
 import time, threading
-from telegram.ext import MessageFilter
 from functools import wraps
-from telegram import ChatAction
 import mutagen
 from mutagen.easyid3 import EasyID3
-
-##                                    FILTRI CUSTOM                                                ##
-class FilterPlaylist(MessageFilter):
-    def filter(self,message):
-        return 'playlist?list' in message.text
+from telegram.ext.filters import MessageFilter
 
 #                                      PATH GLOBALI                                                ##
 PATH_API='config/api_telegram'
 PATH_LOG='mylog'
 PATH_MUSIC='Music/' #occhio allo slash alla fine
 
+
 #                                    VARIABILI GLOBALI                                             ##
 PLAYLIST_NAME, PLAYLIST_PICTURE = range(2)
 CMD_YOUTUBEDL = "yt-dlp"
 
+
+# Initialize logging
+logging.basicConfig(filename=PATH_LOG,filemode='a',format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',level=logging.INFO)
+
+
+##                                    FILTRI CUSTOM                                                ##
+class FilterPlaylist(MessageFilter):
+    def filter(self,message):
+        return 'playlist?list' in message.text
+
+
 ##                                   FUNZIONI GLOBALI                                              ##
-'''
-Questo decoratore parametrizzato ti consente di segnalare diverse azioni a seconda del tipo di risposta del tuo bot.  In questo modo gli utenti avranno un feedback simile dal tuo bot come da un vero essere umano, per essmpio quando sta inviando il video uscirà scritto 'Sta inviando un video...' sotto il nome.
-'''
-def send_action(action):
-        """Sends `action` while processing func command."""
 
-        def decorator(func):
-                @wraps(func)
-                def command_func(update, context, *args, **kwargs):
-                    context.bot.send_chat_action(chat_id=update.effective_message.chat_id, action=action)
-                    return func(update, context,  *args, **kwargs)
-                return command_func
-        return decorator
-
-
-##                 DECORATORI PER GLI HANDLER DELLE CALL BACK           ##
-send_typing_action = send_action(ChatAction.TYPING)
-
-
-def start(update,context):
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     #questa funzione dovrebbe processare uno specifico tipo di aggiornamento dell'update ==> il comando /start
-    context.bot.send_message(chat_id=update.effective_chat.id, text="Cosa so fare?Converto un video di Youtube in file audio!!")
+    update.effective_chat.send_message("Cosa so fare?Converto un video di Youtube in file audio!!")
 
 '''
     Set ID3 tag on audio file.
@@ -103,7 +88,7 @@ def set_id3_tag(file_path, cover_path=None, title=None, artist=None, albumartist
 
     tags.save()
 
-def download_title(update,context,URL2conv):
+def download_title(update: Update, context: ContextTypes.DEFAULT_TYPE,URL2conv) -> str:
     cmd = CMD_YOUTUBEDL + " --get-title {URL2conv}".format(URL2conv=URL2conv)
     logging.info("FINAL COMMAND EXECUTED: {cmd}".format(cmd=cmd))
     out = subprocess.check_output(cmd.split())
@@ -116,7 +101,7 @@ def download_title(update,context,URL2conv):
    Salva l'url della playlist da scaricare.
    Ritorna lo stato successivo
 '''
-def playlist_url_handler(update, context):
+def playlist_url_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["playlist_url"] = update.message.text
     logging.info("PLAYLIST URL: {pl}".format(pl=context.user_data["playlist_url"]))
     query_playlist_name(update, context)
@@ -126,15 +111,15 @@ def playlist_url_handler(update, context):
 '''
    Chiede all'utente di inserire il nome dell'album/playlist
 '''
-def query_playlist_name(update, context):
-    update.message.reply_text('🔤 Type the playlist/album name 🔤:')
+async def query_playlist_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.message.reply_text('🔤 Type the playlist/album name 🔤:')
 
 
 '''
     Salva il nome della playlist inserito dall'utente.
     Ritorna lo stato successivo.
 '''
-def playlist_name_handler(update, context):
+def playlist_name_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["playlist_name"] = update.message.text
     logging.info("PLAYLIST NAME TYPED BY USER: {pl}".format(pl=context.user_data["playlist_name"]))
     query_playlist_image(update, context)
@@ -144,15 +129,15 @@ def playlist_name_handler(update, context):
 '''
    Chiede all'utente di inviare l'immagine dell'album/playlist
 '''
-def query_playlist_image(update, context):
-    update.message.reply_text('🖼 Send the image of playlist/album 🖼:')
+async def query_playlist_image(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.message.reply_text('🖼 Send the image of playlist/album 🖼:')
 
 
 '''
     Salva l'immagine della playlist inviata dall'utente.
     Ritorna lo stato successivo.
 '''
-def playlist_picture_handler(update, context):
+def playlist_picture_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     audiocover_id = update.message.photo[-1].file_id
     audiocover_image = context.bot.getFile(audiocover_id)
     logging.info("[DOWLOAD AUDIOCOVER FILE]\t downloading {audiocover_id}...".format(audiocover_id=audiocover_id))
@@ -177,7 +162,7 @@ def get_format_filename():
 '''
     Ritorna il nome del file nel formato IDTHREAD_UNIXTIMESTAMP.ext dove <ext> è mp3
 '''
-def download_audio(update,context,URL2conv,title_song,path_audiocover=None,album_title=""):
+def download_audio(update: Update, context: ContextTypes.DEFAULT_TYPE,URL2conv,title_song,path_audiocover=None,album_title="") -> str:
     ext = "mp3"
     format_filename = get_format_filename()
     audiofilename = format_filename + "." + ext #il nome del file audio
@@ -214,42 +199,40 @@ def download_audio(update,context,URL2conv,title_song,path_audiocover=None,album
     return new_path
 
 
-
-@send_typing_action
-def convert_url(update,context,url_builtin = None,count = 0,path_audiocover=None,album_title=""):
+async def convert_url(update: Update, context: ContextTypes.DEFAULT_TYPE,url_builtin = None,count = 0,path_audiocover=None,album_title="") -> None:
     #creo un handler per gestire gli update di Telegram e dunque convertire l'url passato in base alla corrispondenza con una una regex
     if(url_builtin is None):
         URL2conv = update.message.text
     else:
         URL2conv = url_builtin
     if(url_builtin is None):
-        context.bot.send_message(chat_id=update.effective_chat.id,text="⏳ATTENDI IL DOWNLOAD ⏳")
+        await update.message.reply_text("⏳ATTENDI IL DOWNLOAD ⏳")
     try:
         title_song = download_title(update,context,URL2conv)
         PATH_UPLOAD = ''
         PATH_UPLOAD = download_audio(update,context,URL2conv,title_song,path_audiocover,album_title)
 
         if(url_builtin is None):
-            context.bot.send_message(chat_id=update.effective_chat.id,text="🗃... FILE AUDIO PRONTO PER L'INVIO ...🗃")
+            await update.message.reply_text("🗃... FILE AUDIO PRONTO PER L'INVIO ...🗃")
 
         #COSTRUZIONE DEL PATH PER L'UPLOAD DEL SERVER
         logging.info("[PATH_UPLOAD]\t{PATH_UPLOAD}".format(PATH_UPLOAD=PATH_UPLOAD))
 
         #INVIO DEL FILE AUDIO ALL'UTENTE
         if(url_builtin is not None):
-            context.bot.send_message(chat_id=update.effective_chat.id,text="✔DOWNLOAD DELL'AUDIO N°%s" %count )
-        context.bot.send_audio(chat_id=update.effective_chat.id,audio=open(PATH_UPLOAD,'rb'),title=title_song)
+            update.message.reply_text("✔DOWNLOAD DELL'AUDIO N°%s" %count )
+        await update.effective_chat.send_audio(audio=open(PATH_UPLOAD,'rb'),title=title_song)
         os.remove(PATH_UPLOAD)
         logging.info("[DELETED]\t{PATH_UPLOAD}".format(PATH_UPLOAD=PATH_UPLOAD))
     except RenameFileError as e:
-        context.bot.send_message(chat_id=update.effective_chat.id,text="⚠⚠⚠ERROR DURING RENAME FILE⚠⚠⚠")
+        update.message.reply_text("⚠⚠⚠ERROR DURING RENAME FILE⚠⚠⚠")
         logging.error(str(e))
     except DownloadFileError as e:
-        context.bot.send_message(chat_id=update.effective_chat.id,text="⚠⚠⚠ERROR DURING DOWNLOAD FILE⚠⚠⚠")
+        update.message.reply_text("⚠⚠⚠ERROR DURING DOWNLOAD FILE⚠⚠⚠")
         logging.error(str(e))
 
 
-def convert_playlist(update,context):
+async def convert_playlist(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     #context.bot.send_message(chat_id=update.effective_chat.id,text="⏳ATTENDI IL DOWNLOAD DELLA PLAYLIST⏳")
     count=0 #contatore per il numero di video inviati
     command_final = CMD_YOUTUBEDL + " -j --flat-playlist " + context.user_data["playlist_url"] + " | jq -r '.id' | sed 's_^_https://youtu.be/_'"
@@ -260,23 +243,23 @@ def convert_playlist(update,context):
     playlist_name = context.user_data["playlist_name"]
     playlist_picture = context.user_data["playlist_picture"]
     logging.info("DOWNLOAD OF A PLAYLIST  WITH %s AUDIO FILEs",len(list_urls))
-    context.bot.send_message(chat_id=update.effective_chat.id,text="⏭ DOWNLOAD IN CORSO DI %s VIDEO DALLA PLAYLIST INVIATA⏮" %len(list_urls) )
+    await update.message.reply_text("⏭ DOWNLOAD IN CORSO DI %s VIDEO DALLA PLAYLIST INVIATA⏮" %len(list_urls) )
     for url in list_urls:
         count+=1
         convert_url(update,context,url,count,playlist_picture,playlist_name) #invio il singolo url estratto con il ciclo for alla routine per il download url classico
 
 
-def unknown_command(update,context):
+def unknown_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     #Alcuni utenti confusi potrebbero provare ad inviare comandi al bot che non può comprendere in quanto non aggiunti al dispatcher
     #Dunque è possibile usare un MessageHandler con il filtro "command" per rispondere a tutti i comandi che non sono riconosciuti dai precedenti handler
     #Tale Handler deve essere aggiunto come ultimo altrimenti verrebbe attivato prima che CommandHandler abbia la possibilità di
     #poter esaminare l'aggiornamento. Una volta gestito infatti un aggiornamento tutti gli altri gestori vengono ignorati
     #Per aggirare questo fenomeno è possibile  passare l'argomento "group" nel metodo add_handler con un valore intero diverso da 0
-    context.bot.send_message(chat_id=update.effective_chat.id,text="Scusami ma non capisco ciò che mi chiedi...")
+    update.message.reply_text("Scusami ma non capisco ciò che mi chiedi..")
 
-def unknown_text(update,context):
+async def unknown_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     #Questa callback gestisce invece il caso in cui si immetta al posto dell'URL o dei comandi validi inseribili del testo che non è riconosciuto come valido
-    context.bot.send_message(chat_id=update.effective_chat.id,text="⚠⚠⚠  L'URL inviato non è valido a quanto pare...  ⚠⚠⚠")
+    await update.message.reply_text("⚠⚠⚠  L'URL inviato non è valido a quanto pare...  ⚠⚠⚠")
 
 def clear_env():
     WAIT_SECONDS = 86400 #il numero di secondi in un giorno
@@ -316,65 +299,56 @@ regex_url_single_video = re.compile(
         r'(?::\d+)?' # optional port
         r'(?:/?|[/?]\S+)$', re.IGNORECASE)
 
-#________________________________________________________________________________________________________
-#LEGGO DAL FILE api_telegram LA API DEL BOT IN QUESTIONE
-
-with open(PATH_API,'r') as file:
-
+def main() -> None:
+    """Start the bot"""
+    #LEGGO DAL FILE api_telegram LA API DEL BOT IN QUESTIONE
+    with open(PATH_API,'r') as file:
         TOKEN=file.read().replace('\n','') #il replace serve in quanto alla fine del file è presente un carattere di -a capo- da eliminare
 
-#INSTANZIO L'UPDATER
-updater = Updater(token=TOKEN,use_context=True,workers=10) #il numero di thread prima era a 40 ma il raspberry andava in crash,dunque lo metto a 10
-#il parametro use-context = True è un argomento speciale necessario solamente per la versione 12 della libreria. Il valore di default è False
-# Permette di avere una retrocompatibilità con le versioni più vecchie della libreria e dare tempo agli utenti di fare l'upgrade
-#Dalla versione 13 sarà True di default
+    application = Application.builder().token(TOKEN).build()
 
-#INSTANZIO IL DISPATCHER
-dispatcher = updater.dispatcher #per avere un rapido accesso al Dispatcher usato dall'Updater lo introduco localmente
+    #INIZIALIZZO LE CLASSI DEI FILTRI
+    filter_playlist = FilterPlaylist()
 
-#INIZIALIZZO IL LOGGING
-logging.basicConfig(filename=PATH_LOG,filemode='a',format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',level=logging.INFO)
+    # Initialize different handlers
 
-#INIZIALIZZO LE CLASSI DEI FILTRI
-filter_playlist = FilterPlaylist()
+    #    (1)   #
+    application.add_handler(CommandHandler('start',start))
 
-#INIZIALIZZO I DIVERSI HANDLER UTILI
-
-#    (1)   #
-dispatcher.add_handler(CommandHandler('start',start,run_async=True))
-
-#    (2)   #
-playlist_handler = ConversationHandler(
-    entry_points=[MessageHandler(Filters.text & Filters.entity(MessageEntity.URL) & filter_playlist, playlist_url_handler,run_async=True)],
+    #    (2)   #
+    playlist_handler = ConversationHandler(
+    entry_points=[MessageHandler(filters.TEXT & filters.Entity(MessageEntity.URL) & filter_playlist, playlist_url_handler)],
     fallbacks=[],
     states={
-        PLAYLIST_NAME: [MessageHandler(Filters.text, playlist_name_handler)],
-        PLAYLIST_PICTURE: [MessageHandler(Filters.document.image | Filters.photo, playlist_picture_handler)]
-    },run_async=True
-)
-dispatcher.add_handler(playlist_handler)
+        PLAYLIST_NAME: [MessageHandler(filters.TEXT, playlist_name_handler)],
+        PLAYLIST_PICTURE: [MessageHandler(filters.Document.IMAGE | filters.PHOTO, playlist_picture_handler)]
+    })
+    application.add_handler(playlist_handler)
 
-#    (3)   #
-#ALTERNATIVA ALLA REGEX --> handler = MessageHandler(Filters.text & ( Filters.entity(MessageEntity.URL) | Filters.entity(MessageEntity.TEXT_LINK),callback) se il messaggio è testuale e contiene un link
-dispatcher.add_handler(MessageHandler(Filters.text & Filters.entity(MessageEntity.URL) & Filters.regex(regex_url_single_video),convert_url,run_async=True))
+    #    (3)   #
+    #ALTERNATIVA ALLA REGEX --> handler = MessageHandler(Filters.text & ( Filters.entity(MessageEntity.URL) | Filters.entity(MessageEntity.TEXT_LINK),callback) se il messaggio è testuale e contiene un link
+    application.add_handler(MessageHandler(filters.TEXT & filters.Entity(MessageEntity.URL) & filters.Regex(regex_url_single_video),convert_url))
 
-#    (4)    #
-dispatcher.add_handler(MessageHandler(Filters.text,unknown_text,run_async=True))
+    #    (4)    #
+    application.add_handler(MessageHandler(filters.TEXT,unknown_text))
 
-#    (5)    #
-#dispatcher.add_handler(MessageHandler(Filters.photo, playlist_picture_handler,run_async=True))
+    #    (5)    #
+    #dispatcher.add_handler(MessageHandler(filters.photo, playlist_picture_handler,run_async=True))
 
-#    (6)    #
-#dispatcher.add_handler(MessageHandler(Filters.text, playlist_name_handler,run_async=True))
+    #    (6)    #
+    #dispatcher.add_handler(MessageHandler(filters.text, playlist_name_handler,run_async=True))
 
 
-#   !!!!!!  L'HANDLER UNKNOWN COME ULTIMO !!!!!          #
-dispatcher.add_handler(MessageHandler(Filters.command,unknown_command,run_async=True))
-#!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!#
-#    (FINE)   #
+    #   !!!!!!  L'HANDLER UNKNOWN COME ULTIMO !!!!!          #
+    application.add_handler(MessageHandler(filters.COMMAND,unknown_command))
+    #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!#
+    #    (FINE)   #
 
-#AVVIO IL BOT
-updater.start_polling()
-clear_env() #pulisco il file di log ogni WAIT_SECONDS secondi
-logging.info("SERVER STARTED")
-updater.idle() #permette di fermare il bot tramite CTRL+C o altri segnali inviati ovvero esegue il comando updater.stop() quando arriva il segnale
+    #AVVIO IL BOT
+    application.run_polling()
+    clear_env() #pulisco il file di log ogni WAIT_SECONDS secondi
+    logging.info("SERVER STARTED")
+
+
+if __name__ == "__main__":
+    main()
