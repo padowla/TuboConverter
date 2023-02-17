@@ -1,0 +1,9 @@
+#!/bin/bash
+
+TAG="tuboconverter"
+dangling_images=$(docker images -qa -f 'dangling=true')
+docker rmi ${dangling_images}
+docker stop tuboconverter-bot
+docker rm tuboconverter-bot
+docker rmi $TAG
+docker build --rm --tag $TAG .
