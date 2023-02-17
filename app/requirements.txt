@@ -1,0 +1,3 @@
+###### Requirements ######
+mutagen
+yt-dlp
