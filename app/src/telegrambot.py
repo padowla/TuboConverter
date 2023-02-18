@@ -1,4 +1,3 @@
-
 # -*- coding: utf-8 -*-
 
 
@@ -45,7 +44,7 @@ class FilterPlaylist(MessageFilter):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     #questa funzione dovrebbe processare uno specifico tipo di aggiornamento dell'update ==> il comando /start
-    update.effective_chat.send_message("Cosa so fare?Converto un video di Youtube in file audio!!")
+    await update.message.reply_text("Cosa so fare?Converto un video di Youtube in file audio!!")
 
 '''
     Set ID3 tag on audio file.
@@ -101,10 +100,10 @@ def download_title(update: Update, context: ContextTypes.DEFAULT_TYPE,URL2conv) 
    Salva l'url della playlist da scaricare.
    Ritorna lo stato successivo
 '''
-def playlist_url_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def playlist_url_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["playlist_url"] = update.message.text
     logging.info("PLAYLIST URL: {pl}".format(pl=context.user_data["playlist_url"]))
-    query_playlist_name(update, context)
+    await query_playlist_name(update, context)
     return PLAYLIST_NAME
 
 
@@ -119,10 +118,10 @@ async def query_playlist_name(update: Update, context: ContextTypes.DEFAULT_TYPE
     Salva il nome della playlist inserito dall'utente.
     Ritorna lo stato successivo.
 '''
-def playlist_name_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def playlist_name_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["playlist_name"] = update.message.text
     logging.info("PLAYLIST NAME TYPED BY USER: {pl}".format(pl=context.user_data["playlist_name"]))
-    query_playlist_image(update, context)
+    await query_playlist_image(update, context)
     return PLAYLIST_PICTURE
 
 
@@ -137,17 +136,16 @@ async def query_playlist_image(update: Update, context: ContextTypes.DEFAULT_TYP
     Salva l'immagine della playlist inviata dall'utente.
     Ritorna lo stato successivo.
 '''
-def playlist_picture_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    audiocover_id = update.message.photo[-1].file_id
-    audiocover_image = context.bot.getFile(audiocover_id)
-    logging.info("[DOWLOAD AUDIOCOVER FILE]\t downloading {audiocover_id}...".format(audiocover_id=audiocover_id))
+async def playlist_picture_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    audiocover_id = await update.message.photo[-1].get_file()
     audiocover_image_name = get_format_filename() + ".jpg"
+    logging.info("[DOWLOAD AUDIOCOVER FILE]\t downloading {audiocover_image_name}...".format(audiocover_image_name=audiocover_image_name))
     path_audiocover="{PATH_MUSIC}{audiocover_image_name}".format(PATH_MUSIC=PATH_MUSIC,audiocover_image_name=audiocover_image_name)
-    audiocover_image.download("{path_audiocover}".format(path_audiocover=path_audiocover))
+    await audiocover_id.download_to_drive("{path_audiocover}".format(path_audiocover=path_audiocover))
     logging.info("[DOWLOADED AUDIOCOVER FILE]\t {path_audiocover} downloaded correctly".format(path_audiocover=path_audiocover))
     context.user_data["playlist_picture"] = path_audiocover
     logging.info("PLAYLIST PICTURE PATH: {pl}".format(pl=context.user_data["playlist_picture"]))
-    convert_playlist(update, context)
+    await convert_playlist(update, context)
     return ConversationHandler.END
 
 
@@ -220,15 +218,15 @@ async def convert_url(update: Update, context: ContextTypes.DEFAULT_TYPE,url_bui
 
         #INVIO DEL FILE AUDIO ALL'UTENTE
         if(url_builtin is not None):
-            update.message.reply_text("✔DOWNLOAD DELL'AUDIO N°%s" %count )
+            await update.message.reply_text("✔DOWNLOAD DELL'AUDIO N°%s" %count )
         await update.effective_chat.send_audio(audio=open(PATH_UPLOAD,'rb'),title=title_song)
         os.remove(PATH_UPLOAD)
         logging.info("[DELETED]\t{PATH_UPLOAD}".format(PATH_UPLOAD=PATH_UPLOAD))
     except RenameFileError as e:
-        update.message.reply_text("⚠⚠⚠ERROR DURING RENAME FILE⚠⚠⚠")
+        await update.message.reply_text("⚠⚠⚠ERROR DURING RENAME FILE⚠⚠⚠")
         logging.error(str(e))
     except DownloadFileError as e:
-        update.message.reply_text("⚠⚠⚠ERROR DURING DOWNLOAD FILE⚠⚠⚠")
+        await update.message.reply_text("⚠⚠⚠ERROR DURING DOWNLOAD FILE⚠⚠⚠")
         logging.error(str(e))
 
 
@@ -249,13 +247,13 @@ async def convert_playlist(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         convert_url(update,context,url,count,playlist_picture,playlist_name) #invio il singolo url estratto con il ciclo for alla routine per il download url classico
 
 
-def unknown_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def unknown_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     #Alcuni utenti confusi potrebbero provare ad inviare comandi al bot che non può comprendere in quanto non aggiunti al dispatcher
     #Dunque è possibile usare un MessageHandler con il filtro "command" per rispondere a tutti i comandi che non sono riconosciuti dai precedenti handler
     #Tale Handler deve essere aggiunto come ultimo altrimenti verrebbe attivato prima che CommandHandler abbia la possibilità di
     #poter esaminare l'aggiornamento. Una volta gestito infatti un aggiornamento tutti gli altri gestori vengono ignorati
     #Per aggirare questo fenomeno è possibile  passare l'argomento "group" nel metodo add_handler con un valore intero diverso da 0
-    update.message.reply_text("Scusami ma non capisco ciò che mi chiedi..")
+    await update.message.reply_text("Scusami ma non capisco ciò che mi chiedi..")
 
 async def unknown_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     #Questa callback gestisce invece il caso in cui si immetta al posto dell'URL o dei comandi validi inseribili del testo che non è riconosciuto come valido
