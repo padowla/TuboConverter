@@ -1,3 +1,4 @@
 ###### Requirements ######
 mutagen
 yt-dlp
+python-telegram-bot
