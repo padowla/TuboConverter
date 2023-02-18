@@ -198,6 +198,7 @@ def download_audio(update: Update, context: ContextTypes.DEFAULT_TYPE,URL2conv,t
 
 
 async def convert_url(update: Update, context: ContextTypes.DEFAULT_TYPE,url_builtin = None,count = 0,path_audiocover=None,album_title="") -> None:
+    print("Ci entro!!!")
     #creo un handler per gestire gli update di Telegram e dunque convertire l'url passato in base alla corrispondenza con una una regex
     if(url_builtin is None):
         URL2conv = update.message.text
@@ -244,7 +245,7 @@ async def convert_playlist(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     await update.message.reply_text("⏭ DOWNLOAD IN CORSO DI %s VIDEO DALLA PLAYLIST INVIATA⏮" %len(list_urls) )
     for url in list_urls:
         count+=1
-        convert_url(update,context,url,count,playlist_picture,playlist_name) #invio il singolo url estratto con il ciclo for alla routine per il download url classico
+        await convert_url(update,context,url,count,playlist_picture,playlist_name) #invio il singolo url estratto con il ciclo for alla routine per il download url classico
 
 
 async def unknown_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
